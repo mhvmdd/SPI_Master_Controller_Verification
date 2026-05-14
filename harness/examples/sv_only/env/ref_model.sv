@@ -48,7 +48,7 @@ class ref_model;
 
     // EXPECTED OUTPUT QUEUES
     //bit [31:0] expected_rx_q[$];
-    //bit [31:0] expected_status_q[$];          //more simple approach:compute it dynamically through get_statis method
+    //bit [31:0] expected_status_q[$];          //more simple approach:compute it dynamically through get_status method
     //bit        expected_irq_q[$];             //same as last one : combinational output , derived from INT_STAT & INT_EN
 
     // SCOREBOARD
@@ -295,15 +295,93 @@ class ref_model;
         return |(int_stat_reg[IRQ_COUNT-1:0] & int_en_reg[IRQ_COUNT-1:0]);
     endfunction
 
-    // SCOREBOARD CHECKERS
-    task check_rx(input bit [31:0] observed);
+    // SCOREBOARD CHECKERS                                  
+    task check_apb_read(                                    //check_rx apply side effects(pop RX_FIFO) after comparing
+        input bit [7:0]  addr,
+        input bit [31:0] observed
+    );
+
+        bit [31:0] expected;
+
+        // 1. Sample expected BEFORE side effect
+        expected = get_expected_read_data(addr);
+
+        // 2. Compare
+        if(addr == STATUS_ADDR) begin
+
+            // Ignore BUSY bit
+            if(observed[31:1] == expected[31:1])
+                $display("[SCOREBOARD] STATUS read check passed");
+            else begin
+                $display("[SCOREBOARD] STATUS mismatch exp=%h obs=%h",
+                            expected, observed);
+                error_count++;
+            end
+
+        end
+        else begin
+
+            if(observed == expected)
+                $display("[SCOREBOARD] APB read check passed");
+            else begin
+                $display("[SCOREBOARD] APB read mismatch exp=%h obs=%h",
+                            expected, observed);
+                error_count++;
+            end
+
+        end
+
+        // 3. Apply read side effect AFTER compare
+        predict_apb_read(addr);
+
     endtask
 
     task check_status(input bit [31:0] observed);
+        bit [31:0] expected_status = get_status();
+        if(observed[31:1] == expected_status[31:1])
+            $display("[SCOREBOARD] Check_status run successfully ");            //we neglect busy consider it protocol verification
+        else begin
+            $display("[SCOREBOARD] error in check_status , expected = %h , observed = %h",expected_status,observed);
+            error_count++;
+        end
     endtask
 
     task check_irq(input bit observed);
+        bit expected_irq = get_irq();
+        if(observed == expected_irq)
+            $display("[SCOREBOARD] check_irq run successfully ");
+        else begin
+            $display("[SCOREBOARD] error in check_irq , expected = %b , observed = %b",expected_irq,observed);
+            error_count++;
+        end
     endtask
+
+
+    //Main Flows
+    /*
+        // APB WRITE FLOW
+            // 1. Monitor captures APB write transaction
+            // 2. Scoreboard calls ref_model.predict_apb_write()
+            // 3. No immediate comparison
+            // 4. Future observable DUT behavior validates write effect
+
+        // APB READ FLOW(check before predict)
+            // 1. Monitor captures APB read transaction
+            // 2. expected = ref_model.get_expected_read_data(addr)
+            // 3. Compare expected vs DUT PRDATA
+            // 4. ref_model.predict_apb_read(addr)                      // apply read side effect(PoP rx_fifo)
+
+        // SPI TRANSFER FLOW
+            // 1. SPI monitor observes completed SPI transfer
+            // 2. Scoreboard calls ref_model.predict_transfer()
+            // 3. No immediate comparison required
+            // 4. Future RX_DATA reads validate transfer result
+
+        // IRQ FLOW
+            // 1. IRQ monitor samples DUT irq output
+            // 2. expected_irq = ref_model.get_irq()
+            // 3. Compare expected_irq vs observed irq
+    */
 
 endclass
 
