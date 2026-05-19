@@ -188,7 +188,7 @@ class ref_model;
     //Predict architectural consequences of APB read transaction
 
         if(addr == RX_DATA_ADDR && (rx_fifo.size() != 0))
-            rx_fifo.pop_front();
+            void'(rx_fifo.pop_front());
 
     endtask
         //CRITICAL note: in Scoreboard : calling get_expected_read_data() must be before predict_apb_read() as predict pops FIFO
@@ -202,7 +202,7 @@ class ref_model;
             CTRL_ADDR    : return ctrl_reg;
             STATUS_ADDR  : return get_status();
             TX_DATA_ADDR : return 32'b0;                //returns 0  write-only register
-            RX_DATA_ADDR : return ((rx_fifo.size() == 0) ? 32'b0 : rx_fifo.front());              //passive read
+            RX_DATA_ADDR : return ((rx_fifo.size() == 0) ? 32'b0 : rx_fifo.pop_front());              //passive read
             CLK_DIV_ADDR : return clk_div_reg;
             SS_CTRL_ADDR : return ss_ctrl_reg;
             INT_STAT_ADDR: return int_stat_reg;
