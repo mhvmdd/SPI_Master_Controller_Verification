@@ -39,9 +39,6 @@ class ref_model;
     bit [31:0] int_stat_reg;
     bit [31:0] delay_reg;
 
-    /*
-        Registers' clssification in your notes
-    */
 
     // FIFO MODELS
     bit [31:0] tx_fifo[$];
