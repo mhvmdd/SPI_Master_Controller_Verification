@@ -51,6 +51,9 @@ module apb_master_bfm (apb_if.master apb);
                 $fatal("[APB_BFM] Timeout for PREADY in %s addr=%h time=%0t", task_name , addr, $time);
         end
         while(!apb.cb_master.pready);
+
+        if(apb.cb_master.pslverr)                   //R22:check that it is in assertion,if(yes) => remove this if condition no need
+            $display("[SCOREBOARD_ERROR] [check_pslverr] PSLVERR asserted at addr=%h time=%0t", addr, $time);
     endtask
 
     task automatic apb_write(input [7:0] addr, input [31:0] data);
@@ -78,6 +81,7 @@ module apb_master_bfm (apb_if.master apb);
         apb.cb_master.psel    <= 1'b1;
         apb.cb_master.penable <= 1'b0;
         apb.cb_master.pwrite  <= 1'b0;
+        apb.cb_master.pwdata  <= '0;
         apb.cb_master.paddr   <= addr;
         @(apb.cb_master);
         // Access Phase

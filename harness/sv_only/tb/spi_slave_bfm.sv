@@ -151,6 +151,7 @@ module spi_slave_bfm (
                         16 : rx_queue.push_back(next_mosi & 32'h0000FFFF);
                         default : rx_queue.push_back(next_mosi);
                     endcase
+
                     $display("[SPI_SLV_BFM] RX Frame = %h", next_mosi);
                     mosi_shift_reg <= '0;
                     bit_count <= 0;
