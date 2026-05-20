@@ -12,8 +12,8 @@ class spi_coverage;
   bit          tx_empty_w;
   bit          rx_full_w;
   bit          rx_empty_w;
-  logic [4:0]  tx_count;
-  logic [4:0]  rx_count;
+  logic [3:0]  tx_count;
+  logic [3:0]  rx_count;
   logic [4:0]  int_stat;
   logic [4:0]  int_en;
   bit          ctrl_en;
@@ -35,6 +35,7 @@ class spi_coverage;
   logic [31:0] ss_ctrl_word;
   logic [31:0] delay_word;
   logic [7:0]  delay_cfg;
+
   // =========================
   // SPI CORE INTERNALS
   // =========================
@@ -53,13 +54,16 @@ class spi_coverage;
   logic [5:0]  bit_cnt;
   logic transfer_done_pulse;
   logic cfg_loopback;
+
   // =========================
   // Inputs from TB / DUT
   // =========================
   virtual apb_if vif;
   virtual spi_if spi_vif;
 
-
+  // =========================
+  // Parameters
+  // =========================
   localparam integer IRQ_TX_EMPTY      = 0;
   localparam integer IRQ_RX_FULL       = 1;
   localparam integer IRQ_TX_OVF        = 2;
@@ -72,7 +76,7 @@ class spi_coverage;
   // =========================
   // APB COVERAGE
   // =========================
-  covergroup cg_apb @(posedge vif.PCLK);
+  covergroup cg_apb;
 
     cp_sel : coverpoint vif.psel;
     cp_en : coverpoint vif.penable;
@@ -110,11 +114,10 @@ class spi_coverage;
 
   endgroup
 
-
   // =========================
   // FIFO COVERAGE
   // =========================
-  covergroup cg_fifo @(posedge vif.PCLK);
+  covergroup cg_fifo;
 
     cp_tx_full  : coverpoint tx_full_w;
     cp_tx_empty : coverpoint tx_empty_w;
@@ -176,11 +179,10 @@ class spi_coverage;
 
   endgroup
 
-
   // =========================
   // SPI CONFIG COVERAGE
   // =========================
-  covergroup cg_spi_cfg @(posedge vif.PCLK);
+  covergroup cg_spi_cfg;
 
     cp_enable : coverpoint ctrl_en;
     cp_mode   : coverpoint ctrl_mode;
@@ -207,7 +209,7 @@ class spi_coverage;
   // =========================================================================
   // CLOCK DIVIDER COVERAGE
   // =========================================================================
-  covergroup cg_clk_div @(posedge vif.PCLK);
+  covergroup cg_clk_div;
 
     cp_div : coverpoint clk_div {
       bins div0 = {16'h0000};   
@@ -217,7 +219,7 @@ class spi_coverage;
       bins div255 = {16'h00FF};
       bins div1024 = {16'h0400};
       bins div_max = {16'hFFFF};     
-      bins div_rand = {[16'h0004 : 16'hFE], [16'h101 : 16'h3FF], [16'h401 : 16'hFFFE]};
+      bins div_rand = {[16'h0004 : 16'h00FE], [16'h0101 : 16'h03FF], [16'h0401 : 16'hFFFE]};
     }
 
   endgroup
@@ -225,7 +227,7 @@ class spi_coverage;
   // =========================================================================
   // DELAY COVERAGE
   // =========================================================================
-  covergroup cg_delay @(posedge vif.PCLK);
+  covergroup cg_delay;
 
     cp_delay : coverpoint delay_cfg {
       bins zero = {8'h00};
@@ -238,16 +240,16 @@ class spi_coverage;
   // =========================
   // INTERRUPT COVERAGE
   // =========================
-  covergroup cg_irq @(posedge vif.PCLK);
+  covergroup cg_irq;
 
     cp_irq_en : coverpoint int_en{
         bins disabled = {5'b00000};
-        bins enabled[]  = {[5'b00001 : 5'b11111]};
+        bins enabled  = {[5'b00001 : 5'b11111]};
     }
 
     cp_irq_st : coverpoint int_stat{
         bins disabled = {5'b00000};
-        bins set[]  = {[5'b00001 : 5'b11111]};
+        bins enabled  = {[5'b00001 : 5'b11111]};
     }
     cp_irq_out : coverpoint irq {
         bins irq_low = {0};
@@ -269,17 +271,22 @@ class spi_coverage;
      `undef MASKED_CP
 
     cross_irq : cross cp_irq_en, cp_irq_st, cp_irq_out {
+      option.cross_auto_bin_max = 0;
+      bins irq_low_none_masked = binsof(cp_irq_out.irq_low) && binsof(cp_irq_en.disabled) && binsof(cp_irq_st.disabled);
+      bins irq_low_all_masked =  binsof(cp_irq_out.irq_low) && binsof(cp_irq_en.disabled) && binsof(cp_irq_st.enabled);
+      bins irq_low_stat_clear = binsof(cp_irq_out.irq_low) && binsof(cp_irq_en.enabled) && binsof(cp_irq_st.disabled);
+      bins irq_low_all_enabled = binsof(cp_irq_out.irq_low) && binsof(cp_irq_en.enabled) && binsof(cp_irq_st.enabled);
+      bins irq_high = binsof(cp_irq_out.irq_high) && binsof(cp_irq_en.enabled) && binsof(cp_irq_st.enabled);
       illegal_bins irq_high_all_masked =  binsof(cp_irq_out.irq_high) && binsof(cp_irq_en.disabled);
       illegal_bins irq_high_stat_clear = binsof(cp_irq_out.irq_high) && binsof(cp_irq_st.disabled);
     }
 
   endgroup
 
-
   // =========================================================================
   // W1C RACE CONDITION
   // =========================================================================
-  covergroup cg_w1c_race @(posedge vif.PCLK);
+  covergroup cg_w1c_race;
 
     cp_w1c_while_pending : coverpoint
         (vif.psel & vif.penable & vif.pwrite & (vif.paddr == 8'h1C) & (int_stat != 5'b0)) {
@@ -288,13 +295,13 @@ class spi_coverage;
     }
 
     cp_tx_ovf_w1c : coverpoint int_stat[2] iff
-        (vif.psel & vif.penable & vif.pwrite & (vif.paddr == 8'h1C)  & vif.PWDATA[2]) {
+        (vif.psel & vif.penable & vif.pwrite & (vif.paddr == 8'h1C)  & vif.pwdata[2]) {
       bins sticky_after_w1c = {1'b1};
       bins cleared = {1'b0};
     }
 
     cp_rx_ovf_w1c : coverpoint int_stat[3] iff
-        (vif.psel & vif.penable & vif.pwrite & (vif.paddr == 8'h1C) & vif.PWDATA[3]) {
+        (vif.psel & vif.penable & vif.pwrite & (vif.paddr == 8'h1C) & vif.pwdata[3]) {
       bins sticky_after_w1c = {1'b1};
       bins cleared  = {1'b0};
     }
@@ -304,7 +311,7 @@ class spi_coverage;
   // =========================
   // SS COVERAGE
   // =========================
-  covergroup cg_ss @(posedge vif.PCLK);
+  covergroup cg_ss;
 
     cp_ss_en : coverpoint ss_en;
     cp_ss_val : coverpoint ss_val;
@@ -313,11 +320,10 @@ class spi_coverage;
 
   endgroup
 
-
   // =========================
   // REGISTER COVERAGE
   // =========================
-  covergroup cg_regs @(posedge vif.PCLK);
+  covergroup cg_regs;
 
     cp_ctrl_reset :  coverpoint ctrl_word iff (vif.presetn == 0) { 
       bins reset_val = {32'h0000_0000}; 
@@ -357,12 +363,10 @@ class spi_coverage;
 
   endgroup
 
-
-
   // =========================================================================
   // SPI CORE COVERAGE
   // =========================================================================
-  covergroup cg_spi_core @(posedge vif.PCLK);
+  covergroup cg_spi_core;
 
     cp_mosi : coverpoint spi_vif.mosi;
     cp_miso : coverpoint spi_vif.miso;
@@ -417,7 +421,7 @@ class spi_coverage;
       bins div255 = {16'h00FF};
       bins div1024 = {16'h0400};
       bins div_max = {16'hFFFF};     
-      bins div_rand = {[16'h0004 : 16'hFE], [16'h101 : 16'h3FF], [16'h401 : 16'hFFFE]};
+      bins div_rand = {[16'h0004 : 16'h00FE], [16'h101 : 16'h3FF], [16'h401 : 16'hFFFE]};
     }
 
     cp_sclk : coverpoint spi_vif.sclk {
@@ -435,12 +439,12 @@ class spi_coverage;
       bins mode3_idle = binsof(cp_mode.mode3) && binsof(cp_sclk.high);
     }
 
-    cross_mode_idle : cross cp_mode, cp_sclk_idle;
     cp_tx_pop : coverpoint tx_pop;
     cp_rx_push : coverpoint rx_push_valid;
 
     // R19
     cp_miso_diff: coverpoint {spi_vif.miso ^ spi_vif.mosi} iff (cfg_loopback) {
+      bins same = {0};
       bins diff = {1};
     }
 
@@ -451,22 +455,27 @@ class spi_coverage;
     // R25
     cp_mode_change_while_busy : coverpoint (busy && (latched_mode != cfg_mode)){
       bins mode_changed = {1};
+      bins mode_unchanged = {0};
     }
 
     cp_width_change_while_busy : coverpoint (busy && (latched_width != cfg_width)){
       bins width_changed = {1};
+      bins width_unchanged = {0};
     }
 
     cp_div_change_while_busy : coverpoint (busy && (latched_div != cfg_div)){
       bins div_changed = {1};
+      bins div_unchanged = {0};
     }
 
     cp_lsb_change_while_busy : coverpoint (busy && (latched_lsb != cfg_lsb_first)){
       bins lsb_changed = {1};
+      bins lsb_unchanged = {0};
     }
 
     // R7
     cp_bit_cnt : coverpoint bit_cnt {
+      bins zero  = {0};
       bins start8  = {8};
       bins start16 = {16};
       bins start32 = {32};
@@ -511,21 +520,87 @@ class spi_coverage;
     cg_spi_core = new();
   endfunction
 
+  // =========================
+  // Sample tasks
+  // =========================
+  task sample_fifo(
+    input bit tx_full,
+    input bit rx_full,
+    input bit tx_empty,
+    input bit rx_empty,
+    input bit [3:0] tcount,
+    input bit [3:0] rcount,
+    input bit [4:0] int_stat_reg
+  );
+      tx_count = tcount;
+      rx_count = rcount;
+      tx_full_w  = tx_full;
+      rx_full_w = rx_full;
+      tx_empty_w = tx_empty;
+      rx_empty_w = rx_empty;
+      int_stat = int_stat_reg;
+      cg_fifo.sample();
+  endtask
 
-  // =========================
-  // Sample task
-  // =========================
-  task sample();
-    cg_apb.sample();
-    cg_fifo.sample();
-    cg_spi_cfg.sample();
-    cg_clk_div.sample();
-    cg_delay.sample();
-    cg_irq.sample();
-    cg_ss.sample();
-    cg_regs.sample();
-    cg_w1c_race.sample();
-    cg_spi_core.sample();
+  task sample_cfg(
+    input bit en,
+    input bit [1:0] mode,
+    input bit [1:0] width,
+    input bit lsb,
+    input bit loopback,
+    input bit [15:0] div,
+    input bit [7:0] delay,
+    input bit [3:0] ssen,
+    input bit [3:0] ssval
+  );
+      ctrl_en = en;
+      ctrl_mode = mode;
+      ctrl_width = width;
+      ctrl_lsb_first = lsb;
+      ctrl_loopback = loopback;
+      clk_div = div;
+      delay_cfg = delay;
+      ss_en = ssen;
+      ss_val = ssval;
+      cg_spi_cfg.sample();
+      cg_clk_div.sample();
+      cg_delay.sample();
+      cg_ss.sample();
+  endtask
+
+  task sample_interrupts(
+    input bit [4:0] int_en_reg,
+    input bit [4:0] int_stat_reg,
+    input bit irq_out
+  );
+      int_en = int_en_reg;
+      int_stat = int_stat_reg;
+      irq = irq_out;
+      cg_irq.sample();
+      cg_w1c_race.sample();
+  endtask
+
+  task sample_regs_reset(
+    input bit [31:0] ctrl,
+    input bit [31:0] status,
+    input bit [31:0] tx,
+    input bit [31:0] rx,
+    input bit [31:0] clk_div,
+    input bit [31:0] ss_ctrl,
+    input bit [31:0] int_en,
+    input bit [31:0] int_stat,
+    input bit [31:0] delay
+  );
+      ctrl_word = ctrl;
+      status_word = status;
+      tx_word = tx;
+      rx_word = rx;
+      clk_div_word = clk_div;
+      ss_ctrl_word = ss_ctrl;
+      int_en_word = int_en;
+      int_stat_word = int_stat;
+      delay_word = delay;
+      cg_regs.sample();
   endtask
 endclass
 
