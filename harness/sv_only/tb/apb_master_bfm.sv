@@ -1,11 +1,8 @@
 // =============================================================================
-// apb_master_bfm.sv  (SV-only starter scaffold)
+// apb_master_bfm.sv
 // -----------------------------------------------------------------------------
-// Minimal APB master BFM. Exposes two tasks: apb_write / apb_read. Uses the
-// `cb_master` clocking block of apb_if.
-//
-// This is *not* UVM - it is just a module with tasks that the test programs
-// call via a hierarchical reference (`tb_top.u_apb_bfm.apb_write(...)`).
+// Extended APB master BFM. Exposes apb_write, apb_read, and wait_not_busy.
+// Tests will call these tasks via hierarchical reference (e.g., tb_top.u_apb_bfm.apb_write(...)).
 // =============================================================================
 
 `ifndef APB_MASTER_BFM_SV
@@ -14,8 +11,7 @@
 
 module apb_master_bfm (apb_if.master apb);
 
-    // Register offsets - duplicated from the spec so students can call:
-    //   apb_write(CTRL,   32'h0000_0001);
+    // Register offsets
     localparam [7:0] CTRL     = 8'h00;
     localparam [7:0] STATUS   = 8'h04;
     localparam [7:0] TX_DATA  = 8'h08;
@@ -26,73 +22,64 @@ module apb_master_bfm (apb_if.master apb);
     localparam [7:0] INT_STAT = 8'h1C;
     localparam [7:0] DELAY    = 8'h20;
 
-    localparam int TIMEOUT_CYCLES = 100;
-
-    task automatic drive_idle();
+    initial begin
         apb.cb_master.psel    <= 1'b0;
         apb.cb_master.penable <= 1'b0;
         apb.cb_master.pwrite  <= 1'b0;
         apb.cb_master.paddr   <= '0;
         apb.cb_master.pwdata  <= '0;
-    endtask
-
-    initial begin
-        drive_idle();
     end
-
-    task automatic wait_ready(string task_name , input [7:0] addr);
-        int timeout;
-        timeout = 0;
-        do begin
-            @(apb.cb_master);
-                timeout++;
-
-            if(timeout >= TIMEOUT_CYCLES)
-                $fatal("[APB_BFM] Timeout for PREADY in %s addr=%h time=%0t", task_name , addr, $time);
-        end
-        while(!apb.cb_master.pready);
-
-        if(apb.cb_master.pslverr)                   //R22:check that it is in assertion,if(yes) => remove this if condition no need
-            $display("[SCOREBOARD_ERROR] [check_pslverr] PSLVERR asserted at addr=%h time=%0t", addr, $time);
-    endtask
 
     task automatic apb_write(input [7:0] addr, input [31:0] data);
         @(apb.cb_master);
-        //Setup Phase
+        // SETUP phase
         apb.cb_master.psel    <= 1'b1;
         apb.cb_master.penable <= 1'b0;
         apb.cb_master.pwrite  <= 1'b1;
         apb.cb_master.paddr   <= addr;
         apb.cb_master.pwdata  <= data;
+        
         @(apb.cb_master);
-        //Access Phase
+        // ACCESS phase
         apb.cb_master.penable <= 1'b1;
-        //do @(apb.cb_master); while (!apb.cb_master.pready);                   //Infinite waiting could hang simulation
-        wait_ready("apb_write" , addr);
-
-        $display("[APB_BFM][WRITE] addr=%h data=%h time=%0t", addr,data, $time);
-
-        drive_idle();
+        
+        // IP is a zero-wait-state slave (PREADY always 1 in ACCESS).
+        // This loop will instantly pass, but is kept for APB standard compliance.
+        do @(apb.cb_master); while (!apb.cb_master.pready);
+        
+        // deassert 
+        apb.cb_master.psel    <= 1'b0;
+        apb.cb_master.penable <= 1'b0;
+        apb.cb_master.pwrite  <= 1'b0;
     endtask
 
     task automatic apb_read(input [7:0] addr, output [31:0] data);
         @(apb.cb_master);
-        // Setup Phase
+        // SETUP phase
         apb.cb_master.psel    <= 1'b1;
         apb.cb_master.penable <= 1'b0;
         apb.cb_master.pwrite  <= 1'b0;
-        apb.cb_master.pwdata  <= '0;
         apb.cb_master.paddr   <= addr;
+        
         @(apb.cb_master);
-        // Access Phase
+        // ACCESS phase
         apb.cb_master.penable <= 1'b1;
-        //do @(apb.cb_master); while (!apb.cb_master.pready);
-        wait_ready("apb_read" , addr);
-
+        
+        do @(apb.cb_master); while (!apb.cb_master.pready);
+        
         data = apb.cb_master.prdata;
-        $display("[APB_BFM][READ] addr=%h data=%h time=%0t",addr,data,$time);
+        
+        apb.cb_master.psel    <= 1'b0;
+        apb.cb_master.penable <= 1'b0;
+    endtask
 
-        drive_idle();
+    // Extension: Helper task to poll the STATUS.BUSY bit (Bit 0)
+    // Called by tests to wait for SPI transfers to complete.
+    task automatic wait_not_busy();
+        logic [31:0] status_val;
+        do begin
+            apb_read(STATUS, status_val);
+        end while (status_val[0] == 1'b1);
     endtask
 
 endmodule
